@@ -1,5 +1,5 @@
 package Oracle::Loader;
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 use strict;
 
 use Carp;
@@ -2140,15 +2140,27 @@ logged.
 
 =over 4
 
-=item * Version 0.01: 12/10/2000 - Initial coding
+=item * Version 0.01
 
-=item * Version 1.00: 02/15/2001 - major restructuring
+12/10/2000 (htu) - Initial coding
 
-=item * Version 1.01: 02/15/2001 - quote Oracle key words
+=item * Version 1.00
 
-=item * Version 1.02: 02/15/2001 - removed dependence from Data::subs
+02/15/2001 (htu) - major restructuring
+
+=item * Version 1.01
+
+02/15/2001 (htu) - quote Oracle key words
+
+=item * Version 1.02
+
+02/15/2004 - removed dependence from Data::subs
 for sort_array and compressArray methods.
 
+=item * Version 1.03
+
+6/15/2004 (htu) - added pre-requisite module Class::Struct in the test
+script.
 
 =back
 

@@ -58,6 +58,7 @@ my @md2 = (    # '$' - scalar parameter
 my %df2 = (    # default values for '$' type parameters
 );
 my $pm = $obj->param; 
+print "PM = $pm\n"; 
 foreach my $m (@md2) {
     can_ok($pm, $m);
     if (exists $df2{$m}) { $d = $df2{$m};
