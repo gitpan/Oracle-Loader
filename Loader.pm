@@ -1,5 +1,5 @@
 package Oracle::Loader;
-our $VERSION = '1.01';
+our $VERSION = '1.02';
 use strict;
 
 use Carp;
@@ -100,7 +100,7 @@ contained in an array or read from a definition file. It also has
 reporting functions to generate SQL*Load error reports and load
 result reports. 
 
-The column definition array could be built from Data::Display module.
+The column definition array could be built from Data::Describe module.
 It is actually an array with hash members and contains these hash 
 elements ('col', 'typ', 'wid', 'max', 'min', 'dec', 'dft', 'req',
 and 'dsp') 
@@ -1390,7 +1390,6 @@ sub read_log {
         # print "\@B: @B\n";
     } else { 
         # use Data::Subs wq(sort_array compressArray); 
-        use Data::Subs; 
         my $i = 0; 
         if (%A) {
             $rst = "$ifn\n" . "-" x length($ifn) . "\n"; 
@@ -1416,6 +1415,84 @@ sub read_log {
         return "$rst\n";
     }
 }
+
+sub sort_array {
+    my ($arf, $ord) = @_;
+    # Input variables:
+    #   arr - array containing numbers
+    #   ord - sort order: default - ascending; other is decending
+    # Local variables:
+    #   i,j - loop indexes
+    #   tmp - temp variable
+    # Global variables used: None
+    # Global variables modified/defined:
+    #   arr - sorted array
+    # Return: None
+    #
+    my ($j, $tmp);
+    for my $i (1..$#{$arf}) {
+        if ($ord) {                    # sort numbers in decending order
+            for ($j=$i; ${$arf}[$j] > ${$arf}[$j-1]; --$j) {
+                if ($j <= 1) { last; } # j=1 has been compared
+                $tmp = ${$arf}[$j];
+                ${$arf}[$j] = ${$arf}[$j-1];
+                ${$arf}[$j-1] = $tmp;
+            }
+        } else {
+            # sort numbers in ascending order
+            for ($j = $i; ${$arf}[$j-1] > ${$arf}[$j]; --$j) {
+                $tmp = ${$arf}[$j];
+                ${$arf}[$j] = ${$arf}[$j-1];
+                ${$arf}[$j-1] = $tmp;
+            }
+        }
+    }
+    return;
+}
+
+sub compressArray {
+    my ($arf) = @_;
+    # Input variables:
+    #   arr - numeric array sorted ascendingly
+    # Local variables:
+    #
+    # Global variables used: None
+    # Global variables modified: None
+    # Calls-To: None
+    # Return: a string
+    #
+    my $S = ${$arf}[0];
+    my $k = 0;
+    for my $i (1..$#{$arf}) {
+        my $j = $i - 1;
+        # skip the second one if it is the same number as the
+        # previous one.
+        next if (${$arf}[$i] == ${$arf}[$j]);
+        if (${$arf}[$i] == (${$arf}[$j] + 1)) {  # if they are adjacent
+            if ($i == $#{$arf}) {
+                if (substr($S, length($S)-1, 1) ne '-') {
+                    $S .= "-${$arf}[$i]"; next;
+                } else {
+                    $S .= ${$arf}[$i]; next;
+                }
+            }
+            ++$k;
+            if (substr($S, length($S)-1, 1) eq '-') {
+                next;
+            }
+            $S .= '-';
+        } else {                              # if they are separate
+            if ($k) {
+                $S .= "${$arf}[$j],${$arf}[$i]";
+            } else {
+                $S .= ",${$arf}[$i]";
+            }
+            $k = 0;
+        }
+    }
+    return $S;
+}
+
 
 =over 4
 
@@ -1882,7 +1959,7 @@ running I<read_definition> method. If we did not set I<def_fn> or
 I<src_dir>, we can set I<cols_ref> parameter directly, and the action
 methods such as I<crt_sql> and I<crt_ctl> will use the array referenced
 by I<cols_ref> parameter to create SQL and control files. You could use
-Data::Display module to form column definitions and pass the reference
+Data::Describe module to form column definitions and pass the reference
 to I<cols_ref> in the Loader. 
 
 These are the parameters related to SQL file:
@@ -2065,11 +2142,19 @@ logged.
 
 =item * Version 0.01: 12/10/2000 - Initial coding
 
+=item * Version 1.00: 02/15/2001 - major restructuring
+
+=item * Version 1.01: 02/15/2001 - quote Oracle key words
+
+=item * Version 1.02: 02/15/2001 - removed dependence from Data::subs
+for sort_array and compressArray methods.
+
+
 =back
 
 =head1 SEE ALSO (some of docs that I check often)
 
-Data::Display, perltoot(1), perlobj(1), perlbot(1), perlsub(1), 
+Data::Describe, perltoot(1), perlobj(1), perlbot(1), perlsub(1), 
 perldata(1),
 perlsub(1), perlmod(1), perlmodlib(1), perlref(1), perlreftut(1).
 

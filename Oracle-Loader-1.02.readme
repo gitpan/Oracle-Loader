@@ -72,10 +72,10 @@ DESCRIPTION
     definition file. It also has reporting functions to generate SQL*Load
     error reports and load result reports.
 
-    The column definition array could be built from Data::Display module. It
-    is actually an array with hash members and contains these hash elements
-    ('col', 'typ', 'wid', 'max', 'min', 'dec', 'dft', 'req', and 'dsp') for
-    each column. The subscripts in the array are in the format of
+    The column definition array could be built from Data::Describe module.
+    It is actually an array with hash members and contains these hash
+    elements ('col', 'typ', 'wid', 'max', 'min', 'dec', 'dft', 'req', and
+    'dsp') for each column. The subscripts in the array are in the format of
     $ary[$col_seq]{$hash_ele}. The hash elements are:
 
       col - column name
@@ -587,7 +587,7 @@ FAQ
         *src_dir*, we can set *cols_ref* parameter directly, and the action
         methods such as *crt_sql* and *crt_ctl* will use the array
         referenced by *cols_ref* parameter to create SQL and control files.
-        You could use Data::Display module to form column definitions and
+        You could use Data::Describe module to form column definitions and
         pass the reference to *cols_ref* in the Loader.
 
         These are the parameters related to SQL file:
@@ -754,8 +754,12 @@ FAQ
 
 CODING HISTORY
     * Version 0.01: 12/10/2000 - Initial coding
+    * Version 1.00: 02/15/2001 - major restructuring
+    * Version 1.01: 02/15/2001 - quote Oracle key words
+    * Version 1.02: 02/15/2001 - removed dependence from Data::subs for
+    sort_array and compressArray methods.
 SEE ALSO (some of docs that I check often)
-    Data::Display, perltoot(1), perlobj(1), perlbot(1), perlsub(1),
+    Data::Describe, perltoot(1), perlobj(1), perlbot(1), perlsub(1),
     perldata(1), perlsub(1), perlmod(1), perlmodlib(1), perlref(1),
     perlreftut(1).
 

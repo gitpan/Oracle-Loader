@@ -29,10 +29,10 @@ use ExtUtils::AutoInstall (
     -version        => '0.40',
 );
 WriteMakefile(
-    DISTNAME        => 'Oracle-Loader-1.01.tar.gz'   ,
+    DISTNAME        => 'Oracle-Loader-1.02.tar.gz'   ,
     ABSTRACT        => 'Perl extension for creating Oracle PL/SQL and control file.',
     NAME            => 'Oracle::Loader'              ,
     PREREQ_PM       => {Test::Harness => 0.1,Test::More => 0.45,},
     AUTHOR          => 'geotiger2001@yahoo.com'      ,
-    VERSION         => 1.01                          ,
+    VERSION         => 1.02                          ,
 );

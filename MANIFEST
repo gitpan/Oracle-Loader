@@ -2,4 +2,5 @@ Loader.pm
 test.pl
 Makefile.PL
 ./t/Loader.t
-Oracle-Loader-1.01.readme
+Oracle-Loader-1.02.readme
+README
