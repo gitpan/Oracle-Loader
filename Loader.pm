@@ -1,5 +1,5 @@
 package Oracle::Loader;
-our $VERSION = '1.03';
+our $VERSION = '1.04';
 use strict;
 
 use Carp;
@@ -2064,42 +2064,6 @@ as the following:
     );
   $ldr = Oracle::Loader->new(%attr);
 
-
-=head2 How is the column definition generated?
-
-If the first row in the data array contains column names, it uses the
-column names in the row to define the column definition array. The 
-column type is determined by searching all the records in the data 
-array. If all the records in the column only do not contain non-digits,
-i.e., only [0-9.], the column is defined as numeric ('N'); otherwise,
-it is defined as character ('C'). No other data types such as date 
-are searched currently.
-
-If the first row does not contain column names and no column definition
-array is provided, the I<get_column_defs> or I<get_column_defs_arrayref>
-will generate field names as "FLD###". The "###" is a sequential number
-starting with 1. If the minimum length of a column is zero, then the
-value in the column can be null; if the minimum length is greater than
-zero, then it is a required column.
-
-The default indicator for the first row is false, i.e., the first row
-does not contain column names. You can indicate whether the first row 
-in the data array is column names by using I<skip_first_row> 
-or I<set_skip_first_row> to set it.
-
-  $ldr->skip_first_row;
-  $ldr->set_skip_first_row(1);    # the same as the above
-  $ldr->set_first_row(1);         # the same as the above
-  $ldr->set_skip_first_row('Y');  # the same effect 
-  $ldr->set_first_row('Y');       # the same as the above
-
-To reverse it, here is how to
-
-  $ldr->set_skip_first_row(0);    # no column in the first row
-  $ldr->set_first_row(0);         # the same as the above
-  $ldr->set_skip_first_row('');   # the same effect 
-  $ldr->set_first_row('');        # the same as the above
-
 =head2 How to change the array references in the display object
 
 You can pass data and column definition array references to display
@@ -2161,6 +2125,12 @@ for sort_array and compressArray methods.
 
 6/15/2004 (htu) - added pre-requisite module Class::Struct in the test
 script.
+
+=item * Version 1.04
+
+7/19/2004 (htu) - removed some unrelated inline comments and try to 
+find out why it failed the test on CPAN while it runs ok on my 
+computer.
 
 =back
 

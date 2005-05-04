@@ -8,22 +8,19 @@ use Test::More qw(no_plan);
 
 use Oracle::Loader;
 my $class = 'Oracle::Loader';
-my $obj = $class->new;
+my $obj = Oracle::Loader->new;
 
 isa_ok($obj, $class);
 
 my ($v, @a);
-my @md0 = ( qw(
-       skip_first_row input_field_sep input_field_separator
-       output_field_sep output_field_separator
-       input_file_name output_file_name
-       output_def_file output_definition_file definition_file_name
-       get_def_arrayref get_dat_arrayref 
+my @md0 = ( qw(read_definition crt_sql crt_ctl
+            check_infile create load batch read_log 
+            sort_array compressArray report_results report_errors
     )); 
-# foreach my $m (@md0) {
-#     $obj->$m if ($m =~ /^(get_|set_)/); 
-#     ok($obj->can($m), "$class->can('$m')");
-# }
+foreach my $m (@md0) {
+    $obj->$m if ($m =~ /^(get_|set_)/); 
+    can_ok($obj, $m);
+}
 diag("Test scalar parameter methods...");
 my @md1 = (    # '$' - scalar parameter
       qw (cols_ref out_fh)
@@ -56,9 +53,10 @@ my @md2 = (    # '$' - scalar parameter
       )
 );
 my %df2 = (    # default values for '$' type parameters
+    nothing_here => 1
 );
 my $pm = $obj->param; 
-print "PM = $pm\n"; 
+# print "PM = $pm\n"; 
 foreach my $m (@md2) {
     can_ok($pm, $m);
     if (exists $df2{$m}) { $d = $df2{$m};
