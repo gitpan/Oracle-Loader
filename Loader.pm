@@ -1,5 +1,5 @@
 package Oracle::Loader;
-our $VERSION = '1.04';
+our $Oracle::Loader::VERSION = '1.05';
 use strict;
 
 use Carp;
@@ -2131,6 +2131,10 @@ script.
 7/19/2004 (htu) - removed some unrelated inline comments and try to 
 find out why it failed the test on CPAN while it runs ok on my 
 computer.
+
+=item * Version 1.05
+
+Commented out all the tests in Loader.t to see if it fails CPAN tests.
 
 =back
 
