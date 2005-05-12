@@ -744,6 +744,10 @@ CODING HISTORY
         Commented out all the tests in Loader.t to see if it fails CPAN
         tests.
 
+    * Version 1.06
+        The problem is the './t/Loader.t' in MANIFEST. CPAN takes it when it
+        is entered as 't/Loader.t'.
+
 SEE ALSO (some of docs that I check often)
     Data::Describe, perltoot(1), perlobj(1), perlbot(1), perlsub(1),
     perldata(1), perlsub(1), perlmod(1), perlmodlib(1), perlref(1),

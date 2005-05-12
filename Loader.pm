@@ -1,5 +1,5 @@
 package Oracle::Loader;
-our $Oracle::Loader::VERSION = '1.05';
+our $Oracle::Loader::VERSION = '1.06';
 use strict;
 
 use Carp;
@@ -2135,6 +2135,11 @@ computer.
 =item * Version 1.05
 
 Commented out all the tests in Loader.t to see if it fails CPAN tests.
+
+=item * Version 1.06
+
+The problem is the './t/Loader.t' in MANIFEST. CPAN takes it when
+it is entered as 't/Loader.t'.
 
 =back
 
