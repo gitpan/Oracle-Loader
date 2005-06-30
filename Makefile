@@ -12,10 +12,10 @@
 
 #	ABSTRACT => q[Perl extension for creating Oracle PL/SQL and control file.]
 #	AUTHOR => q[geotiger2001@yahoo.com]
-#	DISTNAME => q[Oracle-Loader-1.06.tar.gz]
+#	DISTNAME => q[Oracle-Loader-1.061.tar.gz]
 #	NAME => q[Oracle::Loader]
 #	PREREQ_PM => { Test::Harness=>q[0.1], Test::More=>q[0.45], Class::Struct=>q[0.59] }
-#	VERSION => q[1.06]
+#	VERSION => q[1.061]
 #	test => { TESTS=>q[t/Loader.t] }
 
 # --- MakeMaker post_initialize section:
@@ -49,11 +49,11 @@ FULL_AR = /usr/ccs/bin/ar
 # --- MakeMaker constants section:
 AR_STATIC_ARGS = cr
 NAME = Oracle::Loader
-DISTNAME = Oracle-Loader-1.06.tar.gz
+DISTNAME = Oracle-Loader-1.061.tar.gz
 NAME_SYM = Oracle_Loader
-VERSION = 1.06
-VERSION_SYM = 1_06
-XS_VERSION = 1.06
+VERSION = 1.061
+VERSION_SYM = 1_061
+XS_VERSION = 1.061
 INST_BIN = blib/bin
 INST_EXE = blib/script
 INST_LIB = blib/lib
@@ -659,7 +659,7 @@ testdb_static :: testdb_dynamic
 # --- MakeMaker ppd section:
 # Creates a PPD (Perl Package Description) for a binary distribution.
 ppd:
-	@$(PERL) -e "print qq{<SOFTPKG NAME=\"Oracle-Loader-1.06.tar.gz\" VERSION=\"1,06,0,0\">\n}. qq{\t<TITLE>Oracle-Loader-1.06.tar.gz</TITLE>\n}. qq{\t<ABSTRACT>Perl extension for creating Oracle PL/SQL and control file.</ABSTRACT>\n}. qq{\t<AUTHOR>geotiger2001\@yahoo.com</AUTHOR>\n}. qq{\t<IMPLEMENTATION>\n}. qq{\t\t<DEPENDENCY NAME=\"Class-Struct\" VERSION=\"0,59,0,0\" />\n}. qq{\t\t<DEPENDENCY NAME=\"Test-Harness\" VERSION=\"0,1,0,0\" />\n}. qq{\t\t<DEPENDENCY NAME=\"Test-More\" VERSION=\"0,45,0,0\" />\n}. qq{\t\t<OS NAME=\"$(OSNAME)\" />\n}. qq{\t\t<ARCHITECTURE NAME=\"sun4-solaris-64int\" />\n}. qq{\t\t<CODEBASE HREF=\"\" />\n}. qq{\t</IMPLEMENTATION>\n}. qq{</SOFTPKG>\n}" > Oracle-Loader-1.06.tar.gz.ppd
+	@$(PERL) -e "print qq{<SOFTPKG NAME=\"Oracle-Loader-1.061.tar.gz\" VERSION=\"1,061,0,0\">\n}. qq{\t<TITLE>Oracle-Loader-1.061.tar.gz</TITLE>\n}. qq{\t<ABSTRACT>Perl extension for creating Oracle PL/SQL and control file.</ABSTRACT>\n}. qq{\t<AUTHOR>geotiger2001\@yahoo.com</AUTHOR>\n}. qq{\t<IMPLEMENTATION>\n}. qq{\t\t<DEPENDENCY NAME=\"Class-Struct\" VERSION=\"0,59,0,0\" />\n}. qq{\t\t<DEPENDENCY NAME=\"Test-Harness\" VERSION=\"0,1,0,0\" />\n}. qq{\t\t<DEPENDENCY NAME=\"Test-More\" VERSION=\"0,45,0,0\" />\n}. qq{\t\t<OS NAME=\"$(OSNAME)\" />\n}. qq{\t\t<ARCHITECTURE NAME=\"sun4-solaris-64int\" />\n}. qq{\t\t<CODEBASE HREF=\"\" />\n}. qq{\t</IMPLEMENTATION>\n}. qq{</SOFTPKG>\n}" > Oracle-Loader-1.061.tar.gz.ppd
 
 # --- MakeMaker pm_to_blib section:
 

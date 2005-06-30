@@ -1,5 +1,5 @@
 package Oracle::Loader;
-our $Oracle::Loader::VERSION = '1.06';
+my  $VERSION = '1.061';
 use strict;
 
 use Carp;
