@@ -1,26 +1,16 @@
 package Oracle::Loader;
-my  $VERSION = '1.061';
-use strict;
 
+my  $VERSION = '1.10';
+use strict;
 use Carp;
+use File::Basename;
+use IO::File;
+
+use Debug::EchoMessage qw(debug echoMSG set_param disp_param);
+
 my $Debugging = 0;
 my $modname = "Oracle::Loader";
-my $ORA_KEYWORDS = "ACCESS|ADD|ALL|ALTER|AND|ANY|AS|ASC|AUDIT|";
-$ORA_KEYWORDS .= "BETWEEN|BY|CHAR|CHECK|CLUSTER|COLUMN|COMMENT|";
-$ORA_KEYWORDS .= "COMPRESS|CONNECT|CREATE|CURRENT|";
-$ORA_KEYWORDS .= "DATE|DECIMAL|DEFAULT|DELETE|DESC|DISTINCT|DROP|";
-$ORA_KEYWORDS .= "ELSE|EXCLUSIVE|EXISTS|FILE|FLOAT|FOR|FROM|GRANT|";
-$ORA_KEYWORDS .= "GROUP|HAVING|IDENTIFIED|IMMEDIATE|IN|INCREMENT|";
-$ORA_KEYWORDS .= "INDEX|INITIAL|INSERT|INTEGER|INTERSECT|INTO|";
-$ORA_KEYWORDS .= "IS|LEVEL|LIKE|LOCK|LONG|MAXEXTENTS|MINUS|";
-$ORA_KEYWORDS .= "MLSLABEL|MODE|MODIFY|NOAUDIT|NOCOMPRESS|NOT|";
-$ORA_KEYWORDS .= "NOWAIT|NULL|NUMBER|OF|OFFLINE|ON|ONLINE|OPTION|";
-$ORA_KEYWORDS .= "OR|ORDER|PCTFREE|PRIOR|PRIVILEGES|PUBLIC|RAW|";
-$ORA_KEYWORDS .= "RENAME|RESOURCE|REVOKE|ROW|ROWID|ROWNUM|ROWS|";
-$ORA_KEYWORDS .= "SELECT|SET|SHARE|SIZE|SMALLINT|START|SUCCESSFUL|";
-$ORA_KEYWORDS .= "SYNONYM|SYSDATE|TABLE|THEN|TO|TRIGGER|UID|";
-$ORA_KEYWORDS .= "UNION|UNIQUE|UPDATE|USER|VALIDATE|VALUES|";
-$ORA_KEYWORDS .= "VARCHAR|VARCHAR2|VIEW|WHENEVER|WHERE|WITH";
+# use Class::Struct;
 
 =head1 NAME
 
@@ -32,12 +22,10 @@ file.
   use Oracle::Loader;
 
   $ldr = Oracle::Loader->new;
+  $ldr = Oracle::Loader->new(%args);
   $ldr->init;                     # only sets vbm(N),direct(N),reset(Y)
   $ldr->init(%args);              # set variables based on hash array
-  $ldr->sync;                     # syncronize variables 
-  $ldr->cols_ref($arf_ref);       # column definition array ref
-  $ldr->param->dat_fn($fn);       # assign $fn to dat_fn
-  $ldr->conn->Oracle($i, $v);     # assign $v to the connection array
+  $ldr->sync(%args);              # syncronize variables 
   $ldr->disp_param;               # display parameters 
   $ldr->crt_sql;                  # create PL/SQL file 
   $ldr->crt_ctl;                  # create control file 
@@ -52,50 +40,11 @@ file.
   $ldr->report_errors($typ,$cns,$sdr,$ofn,$ext);
   $ldr->read_log($sub,$log,$rno);
 
-  $rv      = $ldr->param->sql_fn; # get sql file name
-  $rv      = $ldr->param->dat_fn; # get data file name
-  $rv      = $ldr->param->vbm;    # the same as the above
-  $ary_ref = $ldr->cols_ref;      # get column def array ref
-  %ary     = $ldr->get_param;     # get all the parameters
-  
-Notation and Conventions
-
-   $ldr    a display object
-   $crf    column definition array reference
-   $fh     a file handler
-   $fn     an output file name 
-   $apd    N/Y, append to output file or not
-   $tab    table name
-   $dat    input data file name 
-   $rst    Y/N, whether to reset the corresponding variables
-   $typ    database type: Oracle, MSSQL, CSV, etc
-   $cns    connection string: usr/pwd@db
-   $sfn    sql program file name
-   $ctl    sqldr control file name
-   $sdr    source directory where definition files stored
-   $phm    program home directory
-   $log    sqlldr log file name
-   $ext    definiton file extension such as '.def', '.var', etc.
-   $sub    calling sub: result (report_results) or 
-           error (report_errors)
-
-   $drh    Driver handle object (rarely seen or used in applications)
-   $h      Any of the $??h handle types above
-   $rc     General Return Code  (boolean: true=ok, false=error)
-   $rv     General Return Value (typically an integer)
-   @ary    List of values returned from the database, typically a row 
-           of data
-   $rows   Number of rows processed (if available, else -1)
-   $fh     A filehandle
-   undef   NULL values are represented by undefined values in perl
-   \%attr  Reference to a hash of attribute values passed to methods
-
 =head1 DESCRIPTION
 
-This is my seocnd object-oriented Perl program.
 The Loader module creates data definition language (DDL) codes 
 for creating tables and control file to be used to load data 
-into the tables. It creates DDL codes based on column definitons 
+into Oracle tables. It creates DDL codes based on column definitons 
 contained in an array or read from a definition file. It also has 
 reporting functions to generate SQL*Load error reports and load
 result reports. 
@@ -103,9 +52,8 @@ result reports.
 The column definition array could be built from Data::Describe module.
 It is actually an array with hash members and contains these hash 
 elements ('col', 'typ', 'wid', 'max', 'min', 'dec', 'dft', 'req',
-and 'dsp') 
-for each column. The subscripts in the array are in the format 
-of $ary[$col_seq]{$hash_ele}. The hash elements
+and 'dsp') for each column. The subscripts in the array are in 
+the format of $ary[$col_seq]{$hash_ele}. The hash elements
 are:
 
   col - column name
@@ -131,72 +79,78 @@ file using I<crt_sql> and I<crt_ctl> methods.
 
 =over 4
 
-=item * the constructor new()
+=item * the constructor new(%args)
 
 Without any input, i.e., new(), the constructor generates an empty 
 object. If any argument is provided, the constructor expects them in
 the hash array format, i.e., in pairs of key and value. 
 
-=back
+Input variables:
+
+  %args - configuration parameters. The args are
+
+    sql_fn    -  pl/sql file name
+    ctl_fn    -  SQL*Loader control file name
+    dat_fn    -  data file name for SQL*Loader
+    bad_fn    -  bad file name for SQL*Loader
+    dis_fn    -  discard file name for SQL*Loader
+    def_fn    -  column definition file name
+    def_ex    -  definition file name extent
+    log_fn    -  log file name for SQL*Loader
+    spool     -  spooling file name
+    dbtab     -  Oracle table name
+    dbts      -  Oracle tablespace name
+    dbsid     -  Oracle SID/Database alias
+    dbhome    -  Oracle home directory
+    dbconn    -  Oracle connection string
+    dbusr     -  Oracle user
+    dbpwd     -  Oracle password
+    ts_iext   -  tablespace initial extent
+    ts_next   -  tablespace next extent
+    db_type   -  database type: Oracle, MSSQL
+    append    -  Y/N/O to append to sql and ctl files
+    drop      -  Y/N to drop table in sql and
+                         #     to append in ctl files
+    vbm       -  Y/N to display more message
+    direct    -  using direct load method in SQL*Loader
+    overwrite -  over write existing sql and ctl files
+    src_dir   -  directory where def files stored
+    DirSep    -  directory separator
+    commit    -  whether to create tables and load data in
+                 batch load
+    reset     -  whether to reset values when new value is
+                 passed in.
+    relax_req - relax constraint/requirement for creating tables
+    add_center - add center number to every plate
+    _counter   - internal counter
+    study_number - study number
+
+    cols_ref  - ref to column array
+    out_fh    - output sql file handle
+    conn      - connection array - ["DBI:Oracle:$db",$usr,$pwd]
+
+Variables used or routines called:
+
+  None
+
+How to use:
+
+   my $obj = new Oracle::Loader;      # or
+      $obj = Oracle::Loader->new;     # or
+      $obj = Oracle::Loader->new(
+        dbconn=>"usr/pwd\@db",def_fn=>'myDef.txt');
+
+Return: new empty or initialized class object.
+
+The I<%args> can contain:
 
 =cut
 
-use Class::Struct;
-
-struct ParaType =>
-{
-    sql_fn    => '$',    # pl/sql file name
-    ctl_fn    => '$',    # SQL*Loader control file name
-    dat_fn    => '$',    # data file name for SQL*Loader
-    bad_fn    => '$',    # bad file name for SQL*Loader
-    dis_fn    => '$',    # discard file name for SQL*Loader
-    def_fn    => '$',    # column definition file name
-    def_ex    => '$',    # definition file name extent
-    log_fn    => '$',    # log file name for SQL*Loader
-    spool     => '$',    # spooling file name
-    dbtab     => '$',    # Oracle table name
-    dbts      => '$',    # Oracle tablespace name
-    dbsid     => '$',    # Oracle SID/Database alias
-    dbhome    => '$',    # Oracle home directory
-    dbconn    => '$',    # Oracle connection string
-    dbusr     => '$',    # Oracle user
-    dbpwd     => '$',    # Oracle password
-    ts_iext   => '$',    # tablespace initial extent
-    ts_next   => '$',    # tablespace next extent
-    db_type   => '$',    # database type: Oracle, MSSQL
-    append    => '$',    # Y/N/O to append to sql and ctl files
-    drop      => '$',    # Y/N to drop table in sql and 
-                         #     to append in ctl files
-    vbm       => '$',    # Y/N to display more message
-    direct    => '$',    # using direct load method in SQL*Loader
-    overwrite => '$',    # over write existing sql and ctl files
-    src_dir   => '$',    # directory where def files stored
-    DirSep    => '$',    # directory separator
-    commit    => '$',    # whether to create tables and load data in
-                         #   batch load
-    reset     => '$',    # whether to reset values when new value is 
-                         #   passed in.
-    relax_req  => '$',   # relax constraint/requirement 
-                         #   for creating tables
-    add_center => '$',   # add center number to every plate
-    _counter   => '$',   # internal counter
-    study_number => '$', # study number
-};
-
-struct ConnType =>
-{
-    Oracle => '@',       # Oracle DBI connection
-    CSV    => '@',       # CSV connection 
-};
-
-# define constructor and accessors
-struct       # strunt installs the constructor and accessors into the 
-(            # current package.
-    cols_ref  => '$',       # ref to column array 
-    out_fh    => '$',       # output sql file handle
-    param     => 'ParaType',# parameter type specifier 
-    conn      => 'ConnType',# connection type   
-);
+sub new {
+    my $class = shift;
+    my $self = bless {}, $class;
+    $self->init(@_);
+}
 
 =over 4
 
@@ -208,9 +162,7 @@ Input variables:
 
 Variables used or methods called: 
 
-  param - get attribute value 
-  conn  - get connection information
-  sync  - syncronize the variables
+  None 
 
 How to use:
 
@@ -227,33 +179,21 @@ This method initiates the parameters for the object.
 =cut
 
 sub init {
-    my ($self, %args) = @_;
-    my $pm=$self->param;
-    my $cn=$self->conn;
-    foreach my $attr (keys %args) {
-        no strict "refs";
-        if ($attr =~ /^(cols_ref|out_fh|conn)/) {
-            $self->$attr( $args{$attr} );
-        } elsif ($attr =~ /(Oracle|CSV)/) {
-            for my $i (0..$#{$args{$attr}}) {
-                $cn->$attr($i, ${$args{$attr}}[$i]);
-                # print "$i : ${$args{$attr}}[$i]\n";
-            }
-        } else {
-            $pm->$attr( $args{$attr} );
-        }
+    my ($s, %args) = @_;
+    foreach my $k (keys %args) { $s->{$k}=$args{$k}; }
+    my $v1 ='conn,direct,reset,vbm,append,DirSep,commit,db_type,';
+       $v1 .= 'relax_req';
+    my $v2 = 'Oracle,N,Y,N,N,/,N,Oracle,Y';
+    my @a = split /,/,$v1;
+    my @b = split /,/,$v2;
+    for my $i (0..$#a) { 
+        my $k = $a[$i]; 
+        $s->{$k}  = $b[$i] if ! exists $s->{$k};
+        $args{$k} = $b[$i] if ! exists $args{$k};
     }
-    if (!$pm->direct)    { $pm->direct('N'); }
-    if (!$pm->reset)     { $pm->reset('Y'); }
-    if (!$pm->vbm)       { $pm->vbm('N'); }
-    if (!$pm->append)    { $pm->append('N'); }
-    if (!$pm->DirSep)    { $pm->DirSep('/'); }
-    if (!$pm->commit)    { $pm->commit('N'); }
-    if (!$pm->db_type)   { $pm->db_type('Oracle'); }
-    if (!$pm->relax_req) { $pm->relax_req('Y'); }
-    $self->_echoMSG("  - Initializing variables in $modname...");
-    $self->sync;
-    return $self;
+    $s->echoMSG("  - Initializing variables in $modname...");
+    $s->sync(%args);
+    return $s;
 }
 
 =over 4
@@ -266,9 +206,8 @@ Input variables:
 
 Variables used or methods called: 
 
-  param - get attribute value 
-  conn  - get connection information
-  sync  - syncrolize the variables
+  Debug::EchoMessage
+    set_param - get parameter value from an array
 
 How to use:
 
@@ -284,59 +223,69 @@ This method syncronizes the parameters.
 
 =cut
 
-sub sync {
-    my ($self, %args) = @_;
-    my $pm=$self->param;
-    my $cn=$self->conn;
+sub _set_param {
+    my $s = (ref $_[0]) ? shift : Oracle::Loader->new;
+    my ($k, $r) = @_;
+    return "" if ref($r) !~ /^(HASH|ARRAY)/;
+    my $v = $s->set_param($k,$r); # get value from the $r
+    # we check the parent object as well if $v is null
+       $v = $s->set_param($k,$s) if $v =~ /^\s*$/; 
+    $s->{$k} = $v;   # preserve the value
+    return $v;
+}
 
-    my $vbm = $pm->vbm;
-    my $rst = ($pm->reset eq 'Y')?1:0;
-    $self->_echoMSG("  - Syncronizing variables in $modname...");
+sub sync {
+    my ($s, %args) = @_;
+    # SYNC rule: the inputs will overwrite the defaults
+
+    my $vbm = $s->_set_param('vbm',\%args); 
+    my $rst = $s->_set_param('reset',\%args);
+       $rst = ($rst eq 'Y') ? 1 : 0;
+    my $sid = $s->_set_param('dbsid',\%args);
+    my $ohm = $s->_set_param('dbhome',\%args); 
     # sync Oracle connection parameters
-    my $orf = $cn->Oracle;
-    my $cs = $pm->dbconn;
-    my ($usr, $pwd, $db) = ("", "", "");
-    if ($#{$orf}<=0) {
-        if ($cs) {
-            ($usr, $pwd, $db) = ($cs =~ m{(\w+)/(\w+)\@(\w+)});
-            $pm->dbsid($db)  if $db;
-            $pm->dbusr($usr) if $usr;
-            $pm->dbpwd($pwd) if $pwd;
-            @{$orf} = ("DBI:Oracle:$db","$usr","$pwd");
-        } 
-        #  @{$orf} = ("DBI:Oracle:sid","dbusr","dbpwd");
-    }
-    my $sid = $pm->dbsid;
-       $sid = ""          if ! defined($sid);
-       $usr = $pm->dbusr;
-       $usr = ""          if ! defined($usr);
-       $pwd = $pm->dbpwd;
-       $pwd = ""          if ! defined($pwd); 
-    if ($db ne $sid) { $cn->Oracle(0, "DBI:Oracle:$sid"); }
-    if (defined(${$orf}[1]) && ${$orf}[1] ne $usr) { 
-        $cn->Oracle(1,$usr); 
-    }
-    if (defined(${$orf}[2]) && ${$orf}[2] ne $pwd) { 
-        $cn->Oracle(2,$pwd); 
-    }
-    use File::Basename;
-    my $dat = $pm->dat_fn;     # data file for SQL*Loader
-    my $sql = $pm->sql_fn;     # pl/sql file name
-    my $def = $pm->def_fn;     # definition file name
+    my $cs  = $s->_set_param('dbconn', \%args);
+    my ($usr, $pwd, $db) = ("","","");
+    if ($cs =~ m{(\w+)/(\w+)\@(\w+)}) { ($usr,$pwd,$db) = ($1,$2,$3); }
+    $usr = $s->_set_param('dbusr',\%args) if ! $usr; 
+    $pwd = $s->_set_param('dbpwd',\%args) if ! $pwd; 
+    $sid = (!$sid && exists $ENV{ORACLE_SID}) ? $ENV{ORACLE_SID} : $sid;
+    $ohm = (!$ohm && exists $ENV{ORACLE_HOME})? $ENV{ORACLE_HOME}: $ohm;
+    $usr = (!$usr && exists $ENV{USER})? $ENV{USER}: $usr;
+    $db  = (($db ne $sid) && $db) ? $db : ($sid ? $sid : $db); 
+    $s->{dbconn} = "$usr/$pwd\@$db";
+    $s->{conn} = ["DBI:Oracle:$db",$usr,$pwd]; 
+    $s->{dbusr} = $usr; 
+    $s->{dbpwd} = $pwd;
+    $s->{dbsid} = $db;
+    $s->{dbhome} = $ohm;
+
+    # sync file names 
+    my $dat = $s->_set_param('dat_fn',\%args); 
+    my $sql = $s->_set_param('sql_fn',\%args); 
+    my $def = $s->_set_param('def_fn',\%args); 
+    my $log = $s->_set_param('log_fn',\%args); 
+    my $dis = $s->_set_param('dis_fn',\%args); 
+    my $bad = $s->_set_param('bad_fn',\%args); 
+    my $ctl = $s->_set_param('ctl_fn',\%args); 
+    my $tab = $s->_set_param('dbtab',\%args); 
+    my ($bnm,$dir,$typ);
     if ($dat||$def) {
-        my ($bnm,$dir,$typ);
         ($bnm,$dir,$typ)=fileparse($dat,'\.\w+$') if ($dat);
         ($bnm,$dir,$typ)=fileparse($def,'\.\w+$') if ($def);
-        if (!$pm->log_fn||$rst) { $pm->log_fn("$dir${bnm}.log"); }
-        if (!$pm->dis_fn||$rst) { $pm->dis_fn("$dir${bnm}.dis"); }
-        if (!$pm->bad_fn||$rst) { $pm->bad_fn("$dir${bnm}.bad"); }
-        if (!$pm->ctl_fn||$rst) { $pm->ctl_fn("$dir${bnm}.ctl"); }
-        if (!$pm->dat_fn||$rst) { $pm->dat_fn("$dir${bnm}.dat"); }
-        if (!$pm->dbtab) { $pm->dbtab($bnm); }
-        if (!$sql) {
-            $sql="$dir${bnm}.sql";
-            $pm->sql_fn($sql);
+        my $rfn = "$dir$bnm";
+        if ($rst) { 
+            $s->{log_fn} = "${rfn}.log";
+            $s->{dis_fn} = "${rfn}.dis";
+            $s->{bad_fn} = "${rfn}.bad";
         }
+        $s->{log_fn} = "${rfn}.log" if ! $log;
+        $s->{dis_fn} = "${rfn}.dis" if ! $dis;
+        $s->{bad_fn} = "${rfn}.bad" if ! $bad;
+        $s->{dat_fn} = "${rfn}.dat" if ! $dat;
+        $s->{dbtab}  = "$bnm"       if ! $tab;
+        $s->{sql_fn} = "${rfn}.sql" if ! $sql;
+        $s->{ctl_fn} = "${rfn}.ctl" if ! $ctl;
         # check the file size of the input data file
         # 1mb=1048576 bytes
         if (-f $dat) {
@@ -351,113 +300,23 @@ sub sync {
                 $sz1 = sprintf "%dk", $sz; 
                 $sz2 = sprintf "%dk", int ($sz/10); 
             }
-            $pm->ts_iext($sz1);
-            $pm->ts_next($sz2);
+            $s->{ts_iext} = "$sz1";
+            $s->{ts_next} = "$sz2";
         }
     }
-    if ($sql) {
-        my ($bnm,$dir,$typ)=fileparse($sql,'\.\w+$');
-        if (!$pm->spool||$rst)  { $pm->spool("$dir${bnm}.lst"); }
-        if (!$pm->dbtab && !$dat) {
-            if (!$pm->dbtab) { $pm->dbtab($bnm); }
+    if ($s->{sql_fn}) {
+        ($bnm,$dir,$typ)=fileparse($s->{sql_fn},'\.\w+$');
+        if (!$s->{spool}||$rst)  { $s->{spool} = "$dir${bnm}.lst"; }
+        if (!$s->{dbtab} && !$dat) {
+            if (!$s->{dbtab}) { $s->{dbtab} = $bnm; }
         }
     }
-    $cn = $self->conn; 
-    if (!$pm->dbsid)  { $pm->dbsid($ENV{'ORACLE_SID'}); }
-    if (!$pm->dbhome) { $pm->dbhome($ENV{'ORACLE_HOME'}); }
-    if (!$pm->dbusr)  { $pm->dbusr($ENV{'USER'}); }
-    ($usr, $pwd, $db) = ($pm->dbusr, $pm->dbpwd, $pm->dbsid);
-    if ($usr && $pwd && $db) {
-        $cn->Oracle(0,"DBI:Oracle:${db}");
-        $cn->Oracle(1,$usr);
-        $cn->Oracle(2,$pwd);
-        $pm->dbconn("$usr/$pwd\@$db");
-    } 
-}
-
-=over 4
-
-=item *  debug($n)
-
-Input variables: 
-
-  $n   - a number between 0 and 100. It specifies the
-         level of messages that you would like to
-         display. The higher the number, the more 
-         detailed messages that you will get.
-
-Variables used or methods called: None.
-
-How to use:
-
-  $self->debug(2);     # set the message level to 2
-  print $self->debug;  # print current message level
-
-Return: None. 
-
-The debug level will be set to $n. 
-
-=back
-
-=cut
-
-sub debug {
-    my $self = shift;
-    confess "usage: thing->debug(level)"    unless @_ == 1;
-    my $level = shift;
-    if (ref($self))  {
-        $self->{"_DEBUG"} = $level;
-    } else {
-        $Debugging = $level;            # whole class
+    foreach my $k (keys %args) {
+        $s->{$k} = $args{$k} if ! exists $s->{$k}; 
     }
-    $self->SUPER::debug($Debugging);   
+    return $s;
 }
 
-=over 4
-
-=item * disp_param
-
-Input variables: None
-
-Variables used or methods called: None.
-
-How to use:
-
-  $self->display;    
-
-Return: none.
-
-This method displays the parameters and their values. 
-
-=back
-
-=cut
-
-sub disp_param {
-    my $self = shift;
-    $self->_echoMSG("  - Displaying parameters in $modname..."); 
-    my $fmt = "%15s = %-30s\n";
-    no strict "refs";
-    foreach my $p (sort $self->_list_vars) {
-        next if (!defined($p) || ! $p); 
-        if ($p =~ /(cols_ref|out_fh)/) {
-            my $c = $self->$p; 
-            if (! defined $c) {
-                printf $fmt, $p, 'undef';
-            } else { 
-                printf $fmt, $p, $c;
-            }
-        } elsif ($p =~ /^(conn)/) {
-            printf $fmt, $p, join ",", keys %{$self->$p};
-        } elsif ($p =~ /(Oracle|CSV)/) {
-            printf $fmt,$p,"[" . (join ",", @{$self->conn->$p}) . "]";
-        } else {
-            my $v = $self->param->$p; 
-               $v = "" if ! defined ($v); 
-            printf $fmt, $p, $v;
-        }
-    }
-}
 
 =over 4
 
@@ -516,14 +375,14 @@ Here is an example:
 
 sub read_definition {
     my $self = shift; 
-    my $pm=$self->param;
     my $dfn  = shift if ($_[0]);  # definition file name
-       $dfn  = $pm->def_fn if (!$dfn); 
-    if ($pm->reset eq 'Y') { $pm->def_fn($dfn) if ($dfn); }
     my $typ  = shift if ($_[0]);  # definition file type
+       $dfn  = $self->{def_fn} if !$dfn; 
+    my $rst  = $self->{reset}; 
+    $self->{def_fn} = $dfn     if $rst; 
     if (!$dfn) { croak "No definition file name is specified."; }
     if (! -f $dfn) { croak "Could not find definition file - $dfn."; }
-    $self->_echoMSG("  - Defining column array from $dfn...");
+    $self->echoMSG("  - Defining column array from $dfn...");
     open DEF, "<$dfn" or croak "Could not open file - $dfn: $!";
     my (@a,@r);
     my $i = -1;                   # def column index
@@ -583,8 +442,8 @@ sub read_definition {
         }
     }
     close DEF;
-    $self->cols_ref(\@r);
-    return $self->cols_ref;
+    $self->{cols_ref} = \@r;
+    return $self->{cols_ref};
 }
 
 =over 4
@@ -635,7 +494,6 @@ element of the array, i.e., ${$arf}[0].  They are
 
 sub crt_sql {
     my $self     = shift; 
-    my $pm=$self->param;
     # initialize variables and check inputs 
     #   (ColRef,SQLFN,Appd,OraTab,ReSet)
     my($crf,$fh,$fn,$appd,$tab,$rst,$drp)=
@@ -646,7 +504,8 @@ sub crt_sql {
         $tab = ${$crf}[0]{'table_name'} if !$tab;
     }
 
-    use File::Basename;
+    my $counter = 0;
+       $counter = $self->{_counter} if exists $self->{_counter}; 
     my ($bnm,$dir,$typ)=fileparse($fn,'\.\w+$');
     my $lst = "$dir${bnm}.lst";
     my $st = localtime(time);
@@ -657,7 +516,7 @@ sub crt_sql {
     $txt .= "REM created at $st\n";
     $txt .= "REM created by Oracle::Loader->crt_sql\nREM\n";
     if ($appd eq 'Y') {
-        if ($pm->_counter==1) { $txt .= "spool $lst\n"; }
+        if ($counter==1) { $txt .= "spool $lst\n"; }
     } else {
         $txt .= "spool $lst\n"; 
     }
@@ -671,12 +530,13 @@ sub crt_sql {
 
     my $fmt = "    %-15s %-23s %12s\n";
     my ($col,$wid,$dft,$req,$otp,$orq,$dec,$dsp);
-    my $rlx = $pm->relax_req; 
+    my $rlx = $self->set_param('relax_req', $self); 
+    my $ts_iext = $self->set_param('ts_iext', $self); 
+    my $ts_next = $self->set_param('ts_next', $self); 
+    my $dbts    = $self->set_param('dbts', $self); 
     for my $i (0..$#{$crf}) {          # loop thru each column
         $col = uc(${$crf}[$i]{'col'}); # column name
-        if ($col =~ /($ORA_KEYWORDS)/) {
-            $col = "\"$col\"";
-        }
+        $col = "\"$col\"";
         $typ = uc(${$crf}[$i]{'typ'}); # column type
         if ($typ =~ /^N$/) { $typ = 'NUMBER'; }
         if ($typ =~ /^D$/) { $typ = 'DATE'; }
@@ -704,19 +564,19 @@ sub crt_sql {
             $col =~ /(^ID|ID$)/) ) { $orq = $req; }
         if ($i == $#{$crf}) { 
             my $t = "";
-            if ($pm->ts_iext || $pm->ts_next) {
+            if ($ts_iext || $ts_next) {
                 $t .= "STORAGE (\n";
-                if ($self->param->ts_iext) {
-                    $t .= "  INITIAL " . $pm->ts_iext . "\n";
+                if ($ts_iext) {
+                    $t .= "  INITIAL " . $ts_iext . "\n";
                 }
-                if ($pm->ts_next) {
-                    $t .= "  NEXT    " . $pm->ts_next . "\n";
+                if ($ts_next) {
+                    $t .= "  NEXT    " . $ts_next . "\n";
                 }
                 $t .= ");\n";
             }
-            if ($pm->dbts) {
+            if ($dbts) {
                 $txt .=  sprintf $fmt, $col, $otp, $orq . ')';
-                $txt .= "TABLESPACE " . $pm->dbts . "\n";
+                $txt .= "TABLESPACE " . $dbts . "\n";
                 if ($t) { $txt .= $t; } else { $txt .= ";\n"; }
             } else {
                 $txt .=  sprintf $fmt, $col, $otp, $orq . ');';
@@ -742,7 +602,7 @@ sub crt_sql {
         $txt .= "COMMENT ON COLUMN ${tab}.$col IS\n  '$dsp';\n";
     }
     if ($appd eq 'Y') {
-        if ($pm->_counter eq 'N') { $txt .= "spool off\nexit\n"; }
+        if ($counter eq 'N') { $txt .= "spool off\nexit\n"; }
     } else { $txt .= "spool off\nexit\n"; }
     print $fh $txt;
     $fh->close;
@@ -786,14 +646,12 @@ This method creates a SQL*Loader control file.
 
 sub crt_ctl {
     my $self     = shift; 
-    my $pm=$self->param;
     # initialize variables and check inputs 
     #   (ColRef,FH/CTLFN,Appd,DataFile,ReSet)
     my($crf,$fh,$fn,$appd,$dat,$rst,$drp)=
         $self->_getInputs('crt_ctl',@_);
     if (!-f $dat) { carp "Input data file - $dat does not exist."; }
 
-    use File::Basename;
     my ($bnm,$dir,$typ);
     if ($dat) {
         ($bnm,$dir,$typ)=fileparse($dat,'\.\w+$');
@@ -803,17 +661,19 @@ sub crt_ctl {
     my $bad = "$dir${bnm}.bad";
     my $dis = "$dir${bnm}.dis";
     my $log = "$dir${bnm}.log";
+    my $tab = $self->set_param('dbtab',$self);
     if ($rst) {
-        $pm->bad_fn($bad);
-        $pm->dis_fn($dis);
-        $pm->log_fn($log);
-        $pm->dbtab($bnm) if (!$pm->dbtab);
+        $self->set_param('bad_fn',$self,$bad);
+        $self->set_param('dis_fn',$self,$dis);
+        $self->set_param('log_fn',$self,$log);
     }
-    my $tab = $pm->dbtab;
+    $self->set_param('dbtab',$self,$bnm) if !$tab;
+    $tab = $self->set_param('dbtab',$self);
     if (!$tab) { carp "Oracle table name is not specified."; }
 
     my $fmt = "    %-15s %-23s %-2s\n";
     my $st = localtime(time);
+    my $direct = $self->set_param('direct',$self);
 
     # start constructing control file
     my $txt = "";                             # SQL codes
@@ -821,7 +681,7 @@ sub crt_ctl {
     # } else {   $txt .= "#\n"; }
     # $txt .= "# created at $st\n";
     # $txt .= "# created by Oracle::Loader->crt_ctl\n#\n";
-    if ($pm->direct eq 'Y') {
+    if ($direct eq 'Y') {
         $txt .= "OPTIONS (ERRORS=1000,SILENT=FEEDBACK,DIRECT=TRUE)\n";
         $txt .= "UNRECOVERABLE";
     } else {
@@ -841,9 +701,7 @@ sub crt_ctl {
     my ($col,$wid,$dft,$req,$otp,$dec);
     for my $i (0..$#{$crf}) {          # loop thru each column
         $col = uc(${$crf}[$i]{'col'}); # column name
-        if ($col =~ /($ORA_KEYWORDS)/) {
-            $col = "\"$col\"";
-        }
+        $col = "\"$col\"";
         $typ = uc(${$crf}[$i]{'typ'}); # column type
         if ($typ =~ /^N$/) { $typ = 'NUMBER'; }
         if ($typ =~ /^D$/) { $typ = 'DATE'; }
@@ -912,7 +770,7 @@ sub check_infile {
     #
     # 05/07/2002: htu - added check on infile
     my $msg = "    no CTL file specified."; 
-    $self->_echoMSG($msg) if !$ctl;
+    $self->echoMSG($msg) if !$ctl;
     return 0 if !$ctl;
     open CTL, "<$ctl" or croak "ERR: Could not open $ctl: $!\n";
     my $inf = "";    # infile name 
@@ -924,17 +782,17 @@ sub check_infile {
     close CTL;
     if ($inf && !-f $inf) {
         $msg = "    INFILE $inf does not exist.\n    $typ: skipped.";
-        $self->_echoMSG($msg);
+        $self->echoMSG($msg);
         return 0;
     }
     if ($inf && -z $inf) {
         $msg = "    INFILE $inf is empty.\n    $typ: abandoned.";
-        $self->_echoMSG($msg);
+        $self->echoMSG($msg);
         return 0;
     }
     if (!$inf) {
         $msg = "WARNNING: could not find INFILE file name in $ctl.";
-        $self->_echoMSG($msg);
+        $self->echoMSG($msg);
     }
     return 1;
 }
@@ -971,7 +829,6 @@ corresponding to its database.
 
 sub create {
     my $self     = shift; 
-    my $pm=$self->param;
     #   creat: $typ, $cns, $sfn, $phm
     #   $typ - DB type: Oracle, MSSQL,
     #   $cns - connection string: usr/pwd@db
@@ -979,19 +836,21 @@ sub create {
     #   $phm - program (sqlldr) home directory 
     # 
     my ($typ,$cns,$sfn,$hmd)=$self->_getInput2('create', @_);
-    $self->_echoMSG("  - Creating $typ tables\n    using $sfn...");
+    $self->echoMSG("  - Creating $typ tables\n    using $sfn...");
     # 05/07/2002: htu - added for infile checking
-    my $ctl = $pm->ctl_fn;
+    my $ctl = $self->{ctl_fn};
     return if (!$self->check_infile($ctl, 'create'));
     if (!$cns) {
-        $self->_echoMSG("ERR: no connection string is defined.");
+        $self->echoMSG("ERR: no connection string is defined.");
         return;
     }
-    my $cmd = join $pm->DirSep, $hmd, "bin", "sqlplus";
+    my $DirSep = $self->set_param('DirSep',$self);
+    my $vbm    = $self->set_param('vbm',$self);
+    my $cmd = join $DirSep, $hmd, "bin", "sqlplus";
        $cmd .= " -s $cns \@$sfn ";
     # my @a=($sps, " -s ", "$cns ", "\@$sfn");
     # system (@a);
-    if ($pm->vbm eq 'Y') {
+    if ($vbm eq 'Y') {
         my $tmp=$cmd;
         $tmp =~ s{(\w+)/(\w+)\@}{$1/\*\*\*\@};
         $tmp =~ s{( \@)}{\n        $1}g;
@@ -1000,7 +859,7 @@ sub create {
     open CMD, "$cmd |" or croak "Could not run sqlplus: $!\n";
     my @a = <CMD>;
     close CMD;
-    if ($pm->vbm eq 'Y') {
+    if ($vbm eq 'Y') {
         for my $i (0..$#a) { print $a[$i]; }
     }
 }
@@ -1038,7 +897,6 @@ sqlldr is used to load the data into the table.
 
 sub load {
     my $self     = shift; 
-    my $pm=$self->param;
     #    load: $typ, $cns, $ctl, $phm, $log
     #   $typ - DB type: Oracle, MSSQL,
     #   $cns - connection string: usr/pwd@db
@@ -1049,15 +907,17 @@ sub load {
     my ($typ,$cns,$ctl,$hmd,$log)=$self->_getInput2('load', @_);
     my $msg = "  - Loading data into $typ tables\n    using $ctl...\n";
        $msg .= "    logging in $log...";
-    $self->_echoMSG($msg);
+    $self->echoMSG($msg);
     return if (!$self->check_infile($ctl,'load')); 
     if (!$cns) {
-        $self->_echoMSG("ERR: no connection string is specified.");
+        $self->echoMSG("ERR: no connection string is specified.");
         return;
     }
     my $cmd = "";        # loader program
+    my $DirSep = $self->set_param('DirSep',$self);
+    my $vbm    = $self->set_param('vbm',$self);
     if ($typ eq "Oracle")     { 
-        $cmd  = join $pm->DirSep, $hmd, "bin", "sqlldr";
+        $cmd  = join $DirSep, $hmd, "bin", "sqlldr";
         $cmd .= " $cns control=$ctl log=$log 2>&1";
         $ENV{'ORACLE_HOME'} = $hmd; 
         $ENV{'PATH'} = "$hmd/bin:$hmd/lib:/usr/bin:/usr/local/bin:."; 
@@ -1065,7 +925,7 @@ sub load {
     } elsif ($typ eq "MSSQL") { 
         $cmd = join "\\", $hmd, "bin", "osql";
     } 
-    if ($pm->vbm eq 'Y') {
+    if ($vbm eq 'Y') {
         my $tmp=$cmd;
         $tmp =~ s{(\w+)/(\w+)\@}{$1/\*\*\*\@};
         $tmp =~ s{(\w+)=}{\n        $1=}g;
@@ -1074,7 +934,7 @@ sub load {
     open CMD, "$cmd |" or croak "Could not run sqlldr: $!\n";
     my @a = <CMD>;
     close CMD;
-    if ($pm->vbm eq 'Y') {
+    if ($vbm eq 'Y') {
         for my $i (0..$#a) { print $a[$i]; }
     }
 }
@@ -1117,7 +977,6 @@ in a source directory.
 
 sub batch {
     my $self     = shift; 
-    my $pm=$self->param;
     #   batch: $typ, $cns, $sdr, $phm, $ext
     #   $typ - database type: Oracle, MSSQL
     #   $cns - connection string: usr/pwd@db
@@ -1127,56 +986,60 @@ sub batch {
     #
     my ($typ,$cns,$sdr,$hmd,$ext)=$self->_getInput2('batch', @_);
     if (!-d $sdr) { croak "Could not find source directory - $sdr."; }
-    $self->_echoMSG("  - Batch loading data from $sdr...");
+    $self->echoMSG("  - Batch loading data from $sdr...");
     # get a list of def file names
+    my $DirSep = $self->set_param('DirSep',$self);
+    my $vbm    = $self->set_param('vbm',$self);
+    my $overwrite= $self->set_param('overwrite',$self);
+    my $sql_fn = $self->set_param('sql_fn',$self);
     opendir(DIR, "$sdr") || 
         croak "Unable to open directory - $sdr: $!\n";
-    my $dsp = $pm->DirSep;
+    my $dsp = $DirSep;
     my @fn = map "$sdr$dsp$_", grep /$ext$/, readdir DIR; 
     closedir DIR;
     if (!@fn) {
         print "    No definition files in $sdr!\n"; 
         return;
     }
-    my $apd_cur = $pm->append;
-    my $rst_cur = $pm->reset;
-    my $dbtab_cur = $pm->dbtab;
-    my $dat_fn_cur = $pm->dat_fn;
-    my $def_fn_cur = $pm->def_fn;
-    my $sql_fn_cur = $pm->sql_fn;
-    my $ctl_fn_cur = $pm->ctl_fn;
-    my $log_fn_cur = $pm->log_fn;
-       $pm->append('Y'); $pm->reset('Y');
-    if ($pm->overwrite eq 'Y' && -f $pm->sql_fn) {
-        unlink $pm->sql_fn;
-    }
+    my $apd_cur = $self->set_param('append',$self);
+    my $rst_cur = $self->set_param('reset',$self);
+    my $dbtab_cur = $self->set_param('dbtab',$self);
+    my $dat_fn_cur = $self->set_param('dat_fn',$self);
+    my $def_fn_cur = $self->set_param('def_fn',$self);
+    my $sql_fn_cur = $self->set_param('sql_fn',$self);
+    my $ctl_fn_cur = $self->set_param('ctl_fn',$self);
+    my $log_fn_cur = $self->set_param('log_fn',$self);
+    $self->set_param('append',$self, 'Y');
+    $self->set_param('reset',$self, 'Y');
+
+    unlink $sql_fn if $overwrite eq 'Y' && -f $sql_fn;
     my ($bnm,$dir,$suf,$sfn,$ctl,$phm,$log);
-    $phm = $pm->dbhome;
+    $phm = $self->set_param('dbhome',$self);
+    my $dbtab = $self->set_param('dbtab',$self);
     for my $i (0..$#fn) {
-        if ($pm->vbm eq 'Y') { printf " %2d $fn[$i]\n", $i; }
+        if ($vbm eq 'Y') { printf " %2d $fn[$i]\n", $i; }
         $self->read_definition($fn[$i]);
-        $pm->dbtab("");
-        $pm->_counter($i+1);
-        if ($i==$#fn) { $pm->_counter('N'); }
+        $self->{dbtab} = "";
+        $self->{_counter} = $i+1;
+        if ($i==$#fn) { $self->{_counter} = 'N'; }
         $self->sync;
-        if ($pm->append eq 'Y' && $i==0) { 
-            unlink $pm->sql_fn;
+        if ($self->{append} eq 'Y' && $i==0) { 
+            unlink $self->{sql_fn};
         }
         $self->crt_sql;
         $self->crt_ctl;
     }
-    if ($pm->append eq 'Y') {     # only one pl/sql program to run
-        if ($pm->commit eq 'Y') { $self->create; }
+    if ($self->{append} eq 'Y') {     # only one pl/sql program to run
+        if ($self->{commit} eq 'Y') { $self->create; }
     }
-    use File::Basename;
-    if ($pm->commit eq 'Y') {
+    if ($self->{commit} eq 'Y') {
         for my $i (0..$#fn) {
             ($bnm,$dir,$suf)=fileparse($fn[$i],'\.\w+$');
             $sfn = "$dir${bnm}.sql";
             $ctl = "$dir${bnm}.ctl";
             $log = "$dir${bnm}.log";
             # we need to create table one by one
-            if ($pm->append ne 'Y') { 
+            if ($self->{append} ne 'Y') { 
                 # creat: $typ, $cns, $sfn, $phm
                 $self->create($typ,$cns,$sfn,$phm); 
             }
@@ -1184,14 +1047,14 @@ sub batch {
             $self->load($typ,$cns,$ctl,$phm,$log);
         }
     }
-    $pm->append($apd_cur);
-    $pm->reset($rst_cur);
-    $pm->dbtab($dbtab_cur);
-    $pm->dat_fn($dat_fn_cur);
-    $pm->def_fn($def_fn_cur);
-    $pm->sql_fn($sql_fn_cur);
-    $pm->ctl_fn($ctl_fn_cur);
-    $pm->log_fn($log_fn_cur);
+    $self->{append} = $apd_cur;
+    $self->{reset}  = $rst_cur;
+    $self->{dbtab}  = $dbtab_cur;
+    $self->{dat_fn} = $dat_fn_cur;
+    $self->{def_fn} = $def_fn_cur;
+    $self->{sql_fn} = $sql_fn_cur;
+    $self->{ctl_fn} = $ctl_fn_cur;
+    $self->{log_fn} = $log_fn_cur;
 }
 
 =over 4
@@ -1240,8 +1103,7 @@ sub read_log {
         return;
     }
     my $msg = sprintf "   %3d reading $ifn...", $rno;
-    $self->_echoMSG($msg);
-    my $pm=$self->param;
+    $self->echoMSG($msg);
     # Purpose: extract load result from SQL*Loader log file and
     #   generate a bar delimited record with the following columns:
     #    1 - Success Rate
@@ -1544,7 +1406,6 @@ and generates a nice report with the following fields:
 
 sub report_results {
     my $self     = shift; 
-    my $pm=$self->param;
     #   get_load_results: $typ, $cns, $sdr, $ofn, $ext
     #   $typ - database type: Oracle, MSSQL
     #   $cns - connection string: usr/pwd@db
@@ -1555,11 +1416,11 @@ sub report_results {
     my ($typ,$cns,$sdr,$ofn,$ext)=
           $self->_getInput2('report_results', @_);
     if (!-d $sdr) { croak "Could not find source directory - $sdr."; }
-    $self->_echoMSG("  + Getting load results for log files in $sdr");
+    $self->echoMSG("  + Getting load results for log files in $sdr");
     # get a list of def file names
     opendir(DIR, "$sdr") || 
         croak "Unable to open directory - $sdr: $!\n";
-    my $dsp = $pm->DirSep;
+    my $dsp = $self->set_param('DirSep', $self);
     my @fn = map "$sdr$dsp$_", grep /$ext$/, readdir DIR; 
     closedir DIR;
     if (!@fn) {
@@ -1568,10 +1429,10 @@ sub report_results {
     }
     my $rpt = (index($ofn, '\/')>-1)?$ofn:join $dsp, $sdr, $ofn;
     # open the output file 
-    if (-f $rpt && $pm->overwrite eq 'Y' && $pm->append ne 'Y') {
+    if (-f $rpt && $self->{overwrite} eq 'Y' && $self->{append} ne 'Y') {
         unlink $rpt;
     }
-    $self->_echoMSG("    to report file $rpt...");
+    $self->echoMSG("    to report file $rpt...");
     open OUT, ">>$rpt" or croak "Could not open output file - $rpt.";
     for my $i (0..$#fn) {
         if (-z $fn[$i]) {
@@ -1623,7 +1484,6 @@ and generates a nice error report with the following information:
 
 sub report_errors {
     my $self     = shift; 
-    my $pm=$self->param;
     #   report_erros: $typ, $cns, $sdr, $ofn, $ext
     #   $typ - database type: Oracle, MSSQL
     #   $cns - connection string: usr/pwd@db
@@ -1634,11 +1494,11 @@ sub report_errors {
     my ($typ,$cns,$sdr,$ofn,$ext)=
           $self->_getInput2('report_errors', @_);
     if (!-d $sdr) { croak "Could not find source directory - $sdr."; }
-    $self->_echoMSG("  + Getting load errors from $sdr");
+    $self->echoMSG("  + Getting load errors from $sdr");
     # get a list of def file names
     opendir(DIR, "$sdr") || 
         croak "Unable to open directory - $sdr: $!\n";
-    my $dsp = $pm->DirSep;
+    my $dsp = $self->set_param('DirSep', $self);
     my @fn = map "$sdr$dsp$_", grep /$ext$/, readdir DIR; 
     closedir DIR;
     if (!@fn) {
@@ -1647,10 +1507,10 @@ sub report_errors {
     }
     my $rpt = (index($ofn, '\/')>-1)?$ofn:join $dsp, $sdr, $ofn;
     # open the output file 
-    if (-f $rpt && $pm->overwrite eq 'Y' && $pm->append ne 'Y') {
+    if (-f $rpt && $self->{overwrite} eq 'Y' && $self->{append} ne 'Y') {
         unlink $rpt;
     }
-    $self->_echoMSG("    to report file $rpt...");
+    $self->echoMSG("    to report file $rpt...");
     open OUT, ">>$rpt" or croak "Could not open output file - $rpt.";
     for my $i (0..$#fn) {
         print OUT $self->read_log('error', $fn[$i], $i); 
@@ -1665,24 +1525,20 @@ sub _list_vars {
        $vs .= "append,vbm,Oracle,CSV,overwrite,dbconn,DirSep,commit,";
        $vs .= "db_type,relax_req,add_center,study_number,drop,def_ex";
     my @vars = split /,/, $vs;
-    return @vars;
+    wantarray ? @vars : \@vars;
 } 
 
-sub _set_dbconn {
+sub set_dbconn {
     my $self = shift;
     my $cns  = shift;    # in usr/pwd@db
     my @a   = split /\//, $cns;   
     my @b   = split /\@/, $a[1];
     my ($usr, $pwd, $sid) = ($a[0], $b[0], $b[1]);
-    my $pm = $self->param;
-    my $cn=$self->conn;
-    $pm->dbusr($usr);
-    $pm->dbpwd($pwd);
-    $pm->dbsid($sid);
-    $pm->dbconn("$usr/$pwd\@$sid");
-    $cn->Oracle(0,"DBI:Oracle:$sid");
-    $cn->Oracle(1,$usr);
-    $cn->Oracle(2,$pwd);
+    $self->set_param('dbusr',$self,$usr);
+    $self->set_param('dbpwd',$self,$pwd);
+    $self->set_param('dbsid',$self,$sid);
+    $self->set_param('dbconn',$self,"$usr/$pwd\@$sid");
+    $self->set_param('conn',$self,["DBI:Oracle:$sid",$usr,$pwd]);
 }
 
 sub _getInputs {
@@ -1692,14 +1548,13 @@ sub _getInputs {
     #   (ColRef,FN,Appd,DataFile/OraTab,Reset)
     # crt_sql: (ColRef,SQLFN,Appd,OraTab,ReSet,Drop)
     # crt_ctl: (ColRef,FH/CTLFN,Appd,DataFile,ReSet,Drop)
-    my $pm  = $self->param;
     my $reset = $_[4] if (defined($_[4]));       # Y or N
     my $drp   = $_[5] if (defined($_[5]));       # Y or N
-       $drp   = $pm->drop if !$drp;
+       $drp   = $self->{drop} if !$drp;
        $drp   = 'Y'       if !$drp;
     my $rst = 0;                                 # 1 or 0
     if ($reset) { $rst = ($reset eq 'Y')?1:0;
-    } else      { $rst = ($pm->reset eq 'Y')?1:0; }
+    } else      { $rst = ($self->{reset} eq 'Y')?1:0; }
     my $crf = "";               # array ref for column def array 
        # 1st input: ColRef
        $crf = shift 
@@ -1707,51 +1562,49 @@ sub _getInputs {
     if ($rst) {
          # uncomment the following line if you want to re-set cols_ref
          # every time a ref to pass througj crt_sql or crt_ctl
-         $self->cols_ref($crf) if ($crf);
+         $self->{cols_ref} = $crf if ($crf);
     }
-       $crf = $self->cols_ref if (!$crf);       # or use obj value
+       $crf = $self->{cols_ref} if (!$crf);       # or use obj value
     my $fh  = "";                               # 2nd input: FH or 
        $fh  = shift if ($_[0] && (ref($_[0]) =~ /^(GLOB|IO::Handle)/ ||
            $_[0] =~ /.*=(GLOB|IO::Handle)/)); 
-    if ($rst) { $self->out_fh($fh) if ($fh); }
-       $fh  = $self->out_fh if (!$fh);          # or use obj value
+    if ($rst) { $self->{out_fh} = $fh if ($fh); }
+       $fh  = $self->{out_fh} if (!$fh);          # or use obj value
     my $fn  = "";                               # 2nd input: FN
        $fn  = shift if ($_[0] && $_[0] !~ /^(Y|N|O)$/i ); # use input 
     my $appd = "";                              # 3rd input: Y/N/O
        $appd = uc shift if ($_[0]);             # change to upper case 
-    if ($rst) { $pm->append($appd) if ($appd); }
-       $appd = $pm->append if (!$appd);         # get it from init
+    if ($rst) { $self->{append} = $appd if ($appd); }
+       $appd = $self->{append} if (!$appd);         # get it from init
     my $dat = "";                               # 4th input: DataFile
        $dat = shift if ($_[0]);                 # use input 
     if ($sub eq 'crt_ctl') {
-       if ($rst) { $pm->dat_fn($dat) if ($dat); }
-       $dat = $pm->dat_fn if (!$dat);           # or use obj value
-       if ($rst) { $pm->ctl_fn($fn) if ($fn); }
-       $fn  = $pm->ctl_fn if (!$fn);            # use obj value
+       if ($rst) { $self->{dat_fn} = $dat if ($dat); }
+       $dat = $self->{dat_fn} if (!$dat);           # or use obj value
+       if ($rst) { $self->{ctl_fn} = $fn if ($fn); }
+       $fn  = $self->{ctl_fn} if (!$fn);            # use obj value
         if (!$dat && $fn) {
-            use File::Basename;
             my ($bnm,$dir,$typ)=fileparse($fn,'\.\w+$');
             $dat = "$dir${bnm}.dat";
         }
-       if ($rst) { $pm->dat_fn($dat) if ($dat); }
+       if ($rst) { $self->{dat_fn} = $dat if ($dat); }
     } else {
        # in crt_sql, we are expecting oracle table name
-       if ($rst) { $pm->dbtab($dat) if ($dat); }
-       $dat = $pm->dbtab if (!$dat);
-       if ($rst) { $pm->sql_fn($fn) if ($fn); }
-       $fn  = $pm->sql_fn if (!$fn);            # use obj value
+       if ($rst) { $self->{dbtab} = $dat if ($dat); }
+       $dat = $self->{dbtab} if (!$dat);
+       if ($rst) { $self->{sql_fn} = $fn if ($fn); }
+       $fn  = $self->{sql_fn} if (!$fn);            # use obj value
     }
     if (!$fh) {          # if file handler still not being defined 
         if ($fn) {       # if a file name is specified
             # check the existance of the file
             if (-f $fn && $appd eq 'N') {
-                if ($pm->overwrite eq 'Y') {
+                if ($self->{overwrite} eq 'Y') {
                     unlink $fn;
                 } else {
                     croak "File $fn exist!";
                 }
             }
-            use IO::File;
             if ($appd eq 'Y' && $sub ne 'crt_ctl') {
                 # append to the file
                 $fh = new IO::File ">>$fn";
@@ -1762,14 +1615,13 @@ sub _getInputs {
             $fh = *STDOUT;
         }
     } 
-    $self->_echoMSG("  - Creating $fn ($sub)...");
+    $self->echoMSG("  - Creating $fn ($sub)...");
     return ($crf,$fh,$fn,$appd,$dat,$rst,$drp); 
 }
 
 sub _getInput2 {
     my $self = shift; 
     my $sub  = shift;
-    my $pm=$self->param;
     # Input variables:
     #              creat: $typ, $cns, $sfn, $phm
     #               load: $typ, $cns, $ctl, $phm, $log
@@ -1784,53 +1636,53 @@ sub _getInput2 {
     #   $phm - program (sqlldr) home directory 
     #   $log - log file name
     # 
-    my $rst = ($pm->reset eq 'Y')?1:0;
+    my $rst = ($self->{reset} eq 'Y')?1:0;
     my $typ = "Oracle";  # database type default to Oracle
        $typ = shift if ($_[0]);
     my $cns = "";        # connection string usr/pwd@db
        $cns = shift if ($_[0]);
-       $cns = $pm->dbconn if (!$cns);
-    if ($cns ne $pm->dbconn && $rst) { $self->_set_dbconn($cns); }
+       $cns = $self->{dbconn} if (!$cns);
+    if ($cns ne $self->{dbconn} && $rst) { $self->set_dbconn($cns); }
     my $ctl = "";        # control file name
        $ctl = shift if ($_[0]); 
     if ($sub eq 'create') {          # get SQL file name
-       $ctl = $pm->sql_fn if (!$ctl); 
-       if ($ctl ne $pm->sql_fn && $rst) { $pm->sql_fn($ctl); }
+       $ctl = $self->{sql_fn} if (!$ctl); 
+       if ($ctl ne $self->{sql_fn} && $rst) { $self->{sql_fn} = $ctl; }
     } elsif ($sub =~ /^(batch|report_results|report_errors)/) {
-       $ctl = $pm->src_dir if (!$ctl); 
+       $ctl = $self->{src_dir} if (!$ctl); 
        if ($sub =~ /^(batch)/) { 
-           if ($ctl ne $pm->src_dir && $rst) { $pm->src_dir($ctl); }
+           if ($ctl ne $self->{src_dir} && $rst) { $self->{src_dir} = $ctl ; }
        }
     } else {
-       $ctl = $pm->ctl_fn if (!$ctl); 
-       if ($ctl ne $pm->ctl_fn && $rst) { $pm->ctl_fn($ctl); }
+       $ctl = $self->{ctl_fn} if (!$ctl); 
+       if ($ctl ne $self->{ctl_fn} && $rst) { $self->{ctl_fn} = $ctl; }
     }
     my $hmd = "";        # Oracle home directory
        $hmd = shift if ($_[0]);
     my $log = "";        # log file name
        $log = shift if ($_[0]);
     if ($sub eq 'load') {
-       $log = $pm->log_fn if (!$log); 
-       if ($log ne $pm->log_fn && $rst) { $pm->log_fn($log); }
+       $log = $self->{log_fn} if (!$log); 
+       if ($log ne $self->{log_fn} && $rst) { $self->{log_fn} = $log; }
     } elsif ($sub eq "batch") {
-       $log = $self->param->def_ex; 
+       $log = $self->{def_ex}; 
        $log = "def" if !$log;
     } elsif ($sub =~ /^(report_results|report_errors)/) {
        $log = "log";
     }
     if ($sub !~ /^(report_results|report_errors)/) {
-        if ($typ eq "Oracle")     { $hmd = $pm->dbhome if (!$hmd); 
-            if ($hmd ne $pm->dbhome && $rst) { $pm->dbhome($hmd); }
-        } elsif ($typ eq "MSSQL") { $hmd = $pm->msshome if (!$hmd);
-            if ($hmd ne $pm->msshome && $rst) { $pm->msshome($hmd); }
+        if ($typ eq "Oracle")     { $hmd = $self->{dbhome} if (!$hmd); 
+            if ($hmd ne $self->{dbhome} && $rst) { $self->{dbhome} = $hmd; }
+        } elsif ($typ eq "MSSQL") { $hmd = $self->{msshome} if (!$hmd);
+            if ($hmd ne $self->{msshome} && $rst) { $self->{msshome} = $hmd; }
         } else {                    $hmd = ""; }
     }
     if (!$hmd) { 
         my $e1 = "rpt";
         if ($sub =~ /^(report_results)/) { $e1 = "rst";
         } elsif ($sub =~ /^(report_errors)/) { $e1 = "err"; }
-        if ($pm->study_number) {
-            $hmd = sprintf "S%03d_ldr.$e1", $pm->study_number;
+        if ($self->{study_number}) {
+            $hmd = sprintf "S%03d_ldr.$e1", $self->{study_number};
         } else {
             my @a = split /\//, $ctl;
             $hmd = "$a[$#a-1]_ldr.$e1";
@@ -1839,11 +1691,6 @@ sub _getInput2 {
     return ($typ, $cns, $ctl, $hmd, $log);
 }
 
-sub _echoMSG {
-    my $self = shift;
-    my $msg  = shift; 
-    if ($self->param->vbm eq 'Y') { print "$msg\n"; }
-}
 
 1;   # ensure that the module can be successfully used.
 
@@ -1902,43 +1749,39 @@ You can get the connection information using these methods:
 
     # create the loader object
     $ldr = new Oracle::Loader;
-    # get CSV connection array reference
-    $a = $ldr->conn->CSV;   
-    # get Oracle connection array reference
-    $b = $ldr->conn->Oracle;
+    # get connection array reference
+    $a = $ldr->{conn};   
     # output the contents
-    print "CSV: @$a\n";
-    print "Oracle: @$b\n"; 
+    print "@$a\n";
 
 You can set the connection using these methods:
 
-    $ldr->conn->CSV(0, "DBI:CSV:f_dir=/tmp");
-    $ldr->conn->Oracle(0, "DBI:Oracle:sidxx");
-    $ldr->conn->Oracle(1, "usrid");
-    $ldr->conn->Oracle(2, "usrpwd");
+    $ldr->{conn} = ["DBI:CSV:f_dir=/tmp"]; # or
+    $ldr->{conn} = ["DBI:Oracle:sidxx"), "usrid", "usrpwd"];
+    $ldr->sync;
   Or 
-    $ldr->param->dbconn("usrid/usrpwd@db");
+    $ldr->{dbconn} = "usrid/usrpwd@db";
     $ldr->sync;
   Or
-    $ldr->param->dbsid('sidxx');
-    $ldr->param->dbusr('orausr');
-    $ldr->param->dbpwd('orapwd');
+    $ldr->{dbsid} = 'sidxx';
+    $ldr->{dbusr} = 'orausr';
+    $ldr->{dbpwd} = 'orapwd';
     $ldr->sync;
 
 Other database parameters:
 
     # set Oracle tablespace name
-    $ldr->param->dbts('USER_DATA'); 
+    $ldr->{dbts} = 'USER_DATA'; 
     # set tablespace intial extent
-    $ldr->param->ts_iext('10k'); 
+    $ldr->{ts_iext} = '10k'; 
     # set tablespace next extent
-    $ldr->param->ts_next('5k');
+    $ldr->{ts_next} = '5k';
     # set table name
-    $ldr->param->dbtab('s083ae'); 
+    $ldr->{dbtab} = 's083ae'; 
     # set database type
-    $ldr->param->db_type('Oracle');
+    $ldr->{db_type} = 'Oracle';
     # database executable home directory
-    $ldr->param->dbhome('/export/home/oracle7');
+    $ldr->{dbhome} = '/export/home/oracle7';
 
 =item * input/output file names
 
@@ -1949,10 +1792,9 @@ searched. The source directory is defined through parameter
 I<src_dir>. These are the parameters related to input files:
 
     # set definition file name
-    $ldr->param->def_fn('/tmp/load/s083p001.def');
-    # set source directory containing all the definition 
-    # files
-    $ldr->param->src_dir('/data/S083/load'); 
+    $ldr->{def_fn} = '/tmp/load/s083p001.def';
+    # set source directory containing all the definition files
+    $ldr->{src_dir} = '/data/S083/load'; 
 
 The important parameter is I<cols_ref>. This parameter is re-set by
 running I<read_definition> method. If we did not set I<def_fn> or
@@ -1965,9 +1807,9 @@ to I<cols_ref> in the Loader.
 These are the parameters related to SQL file:
 
     # set sql file name
-    $ldr->param->sql_fn('/tmp/xx_tst.sql');
+    $ldr->{sql_fn} = '/tmp/xx_tst.sql';
     # set spool file name 
-    $ldr->param->spool('/tmp/xx_tst.lst');
+    $ldr->{spool} =  '/tmp/xx_tst.lst';
 
 The only parameters related to report file names are I<study_number> 
 and I<src_dir>. If no report file name is specified in 
@@ -1976,8 +1818,8 @@ is formed using I<study_number>. If no I<study_number>, then the
 directory name one level above I<src_dir> is used. For instance, if 
 we have
 
-    $ldr->param->study_number('90');
-    $ldr->param->src_dir('/tmp/S083/load'); 
+    $ldr->{study_number} = '90';
+    $ldr->{src_dir} = '/tmp/S083/load'; 
 
 then the report file names are 'S090_ldr.rst' and 'S090_ldr.err' for 
 result report and error report respectively. The report files will be 
@@ -1988,15 +1830,15 @@ null, then the report file names will be 'S083_ldr.rst' and
 These are the parameters related to control file:
 
     # set control file name
-    $ldr->param->ctl_fn('/tmp/load/s083p001.ctl');
+    $ldr->{ctl_fn} = '/tmp/load/s083p001.ctl';
     # set data file name for SQL*Loader
-    $ldr->param->dat_fn('/tmp/load/s083p001.dat');
+    $ldr->{dat_fn} = '/tmp/load/s083p001.dat';
     # set discard file name
-    $ldr->param->dis_fn('/tmp/load/s083p001.dis');
+    $ldr->{dis_fn} = '/tmp/load/s083p001.dis';
     # set bad file name
-    $ldr->param->bad_fn('/tmp/load/s083p001.bad');
+    $ldr->{bad_fn} = '/tmp/load/s083p001.bad';
     # set log file name
-    $ldr->param->log_fn('/tmp/load/s083p001.log');
+    $ldr->{log_fn} = '/tmp/load/s083p001.log';
 
 If an output file handler is defined, the SQL codes or control codes
 will be written to the file handler. The I<sql_fn> or I<ctl_fn> will
@@ -2039,7 +1881,7 @@ currently set to '/' for Unix system. It could be determined by
 using Perl special variable - '$^O' ('$OSNAME'). Here is how to 
 change it to NT directory separater:  
 
-    $ldr->param->DirSep('\\');
+    $ldr->{DirSep} = '\\';
 
 =back
 
@@ -2062,7 +1904,7 @@ as the following:
     'vbm'       => 'Y',    # use verbose mode 
      'cols_ref' => \@C,    # array_ref for col defs
     );
-  $ldr = Oracle::Loader->new(%attr);
+  $ldr = Oracle::Loader->new(%p);
 
 =head2 How to change the array references in the display object
 
@@ -2070,8 +1912,8 @@ You can pass data and column definition array references to display
 objects using the object constructor I<new> or using the I<set> methods:
 
   $ldr = Oracle::Loader->new($arf, $crf); 
-  $ldr->set_data_ref(\@new_array);
-  $ldr->set_cols_ref(\@new_defs);     
+  $ldr->{data_ref} = \@new_array;
+  $ldr->{cols_ref} = \@new_defs;     
 
 
 =head2 How to access the object?
@@ -2140,6 +1982,12 @@ Commented out all the tests in Loader.t to see if it fails CPAN tests.
 
 The problem is the './t/Loader.t' in MANIFEST. CPAN takes it when
 it is entered as 't/Loader.t'.
+
+=item * Version 1.10
+
+Remove Class::Struct implementaiton since this PM does not work as
+expected with new Class::Struct.
+
 
 =back
 
