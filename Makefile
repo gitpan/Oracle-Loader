@@ -12,10 +12,10 @@
 
 #     ABSTRACT => q[Perl extension for creating Oracle PL/SQL and control file.]
 #     AUTHOR => q[geotiger2001@yahoo.com]
-#     DISTNAME => q[Oracle-Loader-1.10.tar.gz]
+#     DISTNAME => q[Oracle-Loader-1.11.tar.gz]
 #     NAME => q[Oracle::Loader]
 #     PREREQ_PM => { Test::More=>q[0.45], Test::Harness=>q[0.1] }
-#     VERSION => q[1.1]
+#     VERSION => q[1.11]
 #     test => { TESTS=>q[t/Loader.t] }
 
 # --- MakeMaker post_initialize section:
@@ -55,11 +55,11 @@ AR_STATIC_ARGS = cr
 DIRFILESEP = /
 NAME = Oracle::Loader
 NAME_SYM = Oracle_Loader
-VERSION = 1.1
+VERSION = 1.11
 VERSION_MACRO = VERSION
-VERSION_SYM = 1_1
+VERSION_SYM = 1_11
 DEFINE_VERSION = -D$(VERSION_MACRO)=\"$(VERSION)\"
-XS_VERSION = 1.1
+XS_VERSION = 1.11
 XS_VERSION_MACRO = XS_VERSION
 XS_DEFINE_VERSION = -D$(XS_VERSION_MACRO)=\"$(XS_VERSION)\"
 INST_ARCHLIB = blib/arch
@@ -239,8 +239,8 @@ CI = ci -u
 RCS_LABEL = rcs -Nv$(VERSION_SYM): -q
 DIST_CP = best
 DIST_DEFAULT = tardist
-DISTNAME = Oracle-Loader-1.10.tar.gz
-DISTVNAME = Oracle-Loader-1.10.tar.gz-1.1
+DISTNAME = Oracle-Loader-1.11.tar.gz
+DISTVNAME = Oracle-Loader-1.11.tar.gz-1.11
 
 
 # --- MakeMaker macro section:
@@ -432,8 +432,8 @@ realclean purge ::  clean realclean_subdirs
 metafile :
 	$(NOECHO) $(ECHO) '# http://module-build.sourceforge.net/META-spec.html' > META.yml
 	$(NOECHO) $(ECHO) '#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#' >> META.yml
-	$(NOECHO) $(ECHO) 'name:         Oracle-Loader-1.10.tar.gz' >> META.yml
-	$(NOECHO) $(ECHO) 'version:      1.1' >> META.yml
+	$(NOECHO) $(ECHO) 'name:         Oracle-Loader-1.11.tar.gz' >> META.yml
+	$(NOECHO) $(ECHO) 'version:      1.11' >> META.yml
 	$(NOECHO) $(ECHO) 'version_from: ' >> META.yml
 	$(NOECHO) $(ECHO) 'installdirs:  site' >> META.yml
 	$(NOECHO) $(ECHO) 'requires:' >> META.yml
@@ -705,7 +705,7 @@ testdb_static :: testdb_dynamic
 # --- MakeMaker ppd section:
 # Creates a PPD (Perl Package Description) for a binary distribution.
 ppd:
-	$(NOECHO) $(ECHO) '<SOFTPKG NAME="$(DISTNAME)" VERSION="1,1,0,0">' > $(DISTNAME).ppd
+	$(NOECHO) $(ECHO) '<SOFTPKG NAME="$(DISTNAME)" VERSION="1,11,0,0">' > $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <TITLE>$(DISTNAME)</TITLE>' >> $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <ABSTRACT>Perl extension for creating Oracle PL/SQL and control file.</ABSTRACT>' >> $(DISTNAME).ppd
 	$(NOECHO) $(ECHO) '    <AUTHOR>geotiger2001@yahoo.com</AUTHOR>' >> $(DISTNAME).ppd

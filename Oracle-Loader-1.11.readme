@@ -730,6 +730,9 @@ CODING HISTORY
             Remove Class::Struct implementaiton since this PM does not work
             as expected with new Class::Struct.
 
+        * Version 1.11
+            Added Debug::EchoMessage as pre-requisit for testing.
+
 SEE ALSO (some of docs that I check often)
         Data::Describe, perltoot(1), perlobj(1), perlbot(1), perlsub(1),
         perldata(1), perlsub(1), perlmod(1), perlmodlib(1), perlref(1),

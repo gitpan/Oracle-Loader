@@ -1,6 +1,6 @@
 package Oracle::Loader;
 
-my  $VERSION = '1.10';
+my  $VERSION = '1.11';
 use strict;
 use Carp;
 use File::Basename;
@@ -1987,6 +1987,10 @@ it is entered as 't/Loader.t'.
 
 Remove Class::Struct implementaiton since this PM does not work as
 expected with new Class::Struct.
+
+=item * Version 1.11
+
+Added Debug::EchoMessage as pre-requisit for testing.
 
 
 =back
